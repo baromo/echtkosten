@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { calculateGeneral, calculateCar } = require("../script.js");
+const { calculateGeneral, calculateElectricity, calculateCredit, calculateCar } = require("../script.js");
 
 function test(name, callback) {
   callback();
@@ -29,6 +29,56 @@ test("Laufzeit null und Rabatt über 100 Prozent werden abgewiesen", () => {
   const values = { oneTime: 0, monthly: 1, annual: 0, extra: 0, discount: 0, duration: 0, durationUnit: "months" };
   assert.throws(() => calculateGeneral(values), /Laufzeit/);
   assert.throws(() => calculateGeneral({ ...values, duration: 1, discount: 101 }), /Rabatt/);
+});
+
+test("Stromkosten enthalten Verbrauch, Grundpreis, Zähler und weitere Gebühren", () => {
+  const result = calculateElectricity({
+    annualKwh: 3500, pricePerKwh: 0.35, monthlyBaseFee: 12,
+    monthlyMeterFee: 3, monthlyOtherFees: 5, annualOtherFees: 24,
+    oneTimeFees: 50, durationYears: 2
+  });
+  assert.equal(result.annualEnergyCost, 1225);
+  assert.equal(result.annualBaseFee, 144);
+  assert.equal(result.annualMeterFee, 36);
+  assert.equal(result.total, 3028);
+  assert.equal(result.monthlyAverage, 3028 / 24);
+  assert.equal(result.effectivePricePerKwh, 3028 / 7000);
+});
+
+test("Stromkosten lassen null Verbrauch zu und zeigen dann keinen kWh-Preis", () => {
+  const result = calculateElectricity({
+    annualKwh: 0, pricePerKwh: 0.35, monthlyBaseFee: 12,
+    monthlyMeterFee: 0, monthlyOtherFees: 0, annualOtherFees: 0,
+    oneTimeFees: 0, durationYears: 1
+  });
+  assert.equal(result.total, 144);
+  assert.equal(result.effectivePricePerKwh, null);
+});
+
+test("Kreditrechner berechnet Rate, Gesamtzinsen und jährliche Tilgung", () => {
+  const result = calculateCredit({ principal: 10000, annualInterestRate: 12, termMonths: 12 });
+  assert.ok(result.monthlyPayment > 0);
+  assert.ok(result.totalInterest > 0);
+  assert.ok(Math.abs(result.totalPaid - (result.principal + result.totalInterest)) < 1e-8);
+  assert.ok(result.firstMonthPrincipal > 0);
+  assert.ok(result.firstMonthPrincipal < result.monthlyPayment);
+  assert.equal(result.schedule.length, 1);
+  assert.equal(result.schedule[0].remainingBalance, 0);
+  assert.ok(Math.abs(result.schedule[0].principal - result.principal) < 1e-8);
+});
+
+test("zinsfreier Kredit wird ohne Zinskosten vollständig getilgt", () => {
+  const result = calculateCredit({ principal: 1200, annualInterestRate: 0, termMonths: 12 });
+  assert.equal(result.monthlyPayment, 100);
+  assert.equal(result.totalInterest, 0);
+  assert.equal(result.totalPaid, 1200);
+  assert.equal(result.firstMonthPrincipal, 100);
+  assert.equal(result.remainingBalance, 0);
+});
+
+test("Kreditrechner weist ungültige Laufzeit und Zinssätze ab", () => {
+  assert.throws(() => calculateCredit({ principal: 1000, annualInterestRate: 5, termMonths: 0 }), /Laufzeit/);
+  assert.throws(() => calculateCredit({ principal: 1000, annualInterestRate: 101, termMonths: 12 }), /Sollzins/);
 });
 
 test("Autorechner zählt Anzahlung und Tilgung nicht doppelt", () => {
