@@ -107,6 +107,41 @@
             <button class="button button-dark calculate-button" type="submit">Kosten berechnen <span aria-hidden="true">→</span></button>
           </form>
           <div class="result-wrap" id="generalResult" aria-live="polite" aria-atomic="true" hidden></div>
+
+          <form id="electricityForm" novalidate hidden>
+            <fieldset class="form-group">
+              <legend><span>01</span> Verbrauch & Tarif</legend>
+              <div class="form-grid">
+                <div class="field"><label for="electricityAnnualKwh">Stromverbrauch pro Jahr</label><div class="input-wrap"><input id="electricityAnnualKwh" name="annualKwh" type="number" min="0" step="any" inputmode="decimal" value="3500"><span>kWh / Jahr</span></div><small>Beispielwert – deinen Verbrauch findest du auf der Jahresabrechnung.</small></div>
+                <div class="field"><label for="electricityPricePerKwh">Arbeitspreis je Kilowattstunde</label><div class="input-wrap"><input id="electricityPricePerKwh" name="pricePerKwh" type="number" min="0" step="any" inputmode="decimal" value="0.35"><span>€ / kWh</span></div><small>35 Cent je kWh entsprechen 0,35 € / kWh.</small></div>
+                <div class="field"><label for="electricityBaseFee">Grundpreis</label><div class="input-wrap"><input id="electricityBaseFee" name="monthlyBaseFee" type="number" min="0" step="any" inputmode="decimal" value="12"><span>€ / Monat</span></div></div>
+                <div class="field"><label for="electricityMeterFee">Zähler- und Messstellengebühr</label><div class="input-wrap"><input id="electricityMeterFee" name="monthlyMeterFee" type="number" min="0" step="any" inputmode="decimal" value="0"><span>€ / Monat</span></div></div>
+                <div class="field"><label for="electricityOtherMonthlyFees">Weitere feste Gebühren</label><div class="input-wrap"><input id="electricityOtherMonthlyFees" name="monthlyOtherFees" type="number" min="0" step="any" inputmode="decimal" value="0"><span>€ / Monat</span></div><small>Zum Beispiel zusätzliche monatliche Tarifkosten.</small></div>
+                <div class="field"><label for="electricityAnnualFees">Weitere Jahresgebühren</label><div class="input-wrap"><input id="electricityAnnualFees" name="annualOtherFees" type="number" min="0" step="any" inputmode="decimal" value="0"><span>€ / Jahr</span></div></div>
+                <div class="field"><label for="electricityOneTimeFees">Einmalige Gebühren</label><div class="input-wrap"><input id="electricityOneTimeFees" name="oneTimeFees" type="number" min="0" step="any" inputmode="decimal" value="0"><span>€</span></div></div>
+                <div class="field"><label for="electricityDurationYears">Berechnungszeitraum</label><div class="input-wrap"><input id="electricityDurationYears" name="durationYears" type="number" min="1" max="60" step="1" inputmode="numeric" value="1"><span>Jahre</span></div></div>
+              </div>
+              <div class="field-note"><span class="field-note-icon" aria-hidden="true">i</span><p>Trage Gebühren getrennt ein. Wenn die Zählergebühr bereits im Grundpreis steckt, lass dieses Feld auf 0 €, damit sie nicht doppelt zählt.</p></div>
+            </fieldset>
+            <p class="form-error" id="electricityError" role="alert" hidden></p>
+            <button class="button button-dark calculate-button" type="submit">Stromkosten berechnen <span aria-hidden="true">→</span></button>
+          </form>
+          <div class="result-wrap" id="electricityResult" aria-live="polite" aria-atomic="true" hidden></div>
+
+          <form id="creditForm" novalidate hidden>
+            <fieldset class="form-group">
+              <legend><span>01</span> Kreditdaten</legend>
+              <div class="form-grid">
+                <div class="field"><label for="creditAmount">Kreditsumme</label><div class="input-wrap"><input id="creditAmount" name="principal" type="number" min="0" step="any" inputmode="decimal" value="10000"><span>€</span></div></div>
+                <div class="field"><label for="creditInterestRate">Sollzins pro Jahr</label><div class="input-wrap"><input id="creditInterestRate" name="annualInterestRate" type="number" min="0" max="100" step="any" inputmode="decimal" value="5.9"><span>%</span></div><small>Vereinfachte Rechnung ohne zusätzliche Bankgebühren.</small></div>
+                <div class="field"><label for="creditTermMonths">Laufzeit</label><div class="input-wrap"><input id="creditTermMonths" name="termMonths" type="number" min="1" max="600" step="1" inputmode="numeric" value="60"><span>Monate</span></div></div>
+              </div>
+              <div class="field-note"><span class="field-note-icon" aria-hidden="true">i</span><p>Die Monatsrate bleibt gleich. Am Anfang geht mehr davon für Zinsen drauf, später steigt der Tilgungsanteil. So wird die Restschuld Monat für Monat kleiner.</p></div>
+            </fieldset>
+            <p class="form-error" id="creditError" role="alert" hidden></p>
+            <button class="button button-dark calculate-button" type="submit">Kredit berechnen <span aria-hidden="true">→</span></button>
+          </form>
+          <div class="result-wrap" id="creditResult" aria-live="polite" aria-atomic="true" hidden></div>
         </section>
 
         <section class="calculator-panel" id="carPanel" aria-labelledby="carTitle" hidden>

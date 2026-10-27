@@ -56,6 +56,47 @@ function calculateGeneral(values) {
   };
 }
 
+function calculateElectricity(values) {
+  const annualKwh = parseNumber(values.annualKwh, "Stromverbrauch pro Jahr", { min: 0 });
+  const pricePerKwh = parseNumber(values.pricePerKwh, "Arbeitspreis je Kilowattstunde", { min: 0 });
+  const monthlyBaseFee = parseNumber(values.monthlyBaseFee, "Grundpreis pro Monat", { min: 0 });
+  const monthlyMeterFee = parseNumber(values.monthlyMeterFee, "Zähler- und Messstellengebühr", { min: 0 });
+  const monthlyOtherFees = parseNumber(values.monthlyOtherFees, "Weitere feste Gebühren", { min: 0 });
+  const annualOtherFees = parseNumber(values.annualOtherFees, "Weitere Jahresgebühren", { min: 0 });
+  const oneTimeFees = parseNumber(values.oneTimeFees, "Einmalige Gebühren", { min: 0 });
+  const durationYears = parseNumber(values.durationYears, "Berechnungszeitraum", { min: 1, max: 60, integer: true });
+
+  const annualEnergyCost = annualKwh * pricePerKwh;
+  const annualBaseFee = monthlyBaseFee * 12;
+  const annualMeterFee = monthlyMeterFee * 12;
+  const annualOtherMonthlyFees = monthlyOtherFees * 12;
+  const annualTotal = annualEnergyCost + annualBaseFee + annualMeterFee + annualOtherMonthlyFees + annualOtherFees;
+  const recurringTotal = annualTotal * durationYears;
+  const total = recurringTotal + oneTimeFees;
+  const totalKwh = annualKwh * durationYears;
+
+  if (![annualTotal, recurringTotal, total, totalKwh].every(Number.isFinite)) {
+    throw new Error("Die eingegebenen Werte sind zu groß für eine sichere Berechnung.");
+  }
+
+  return {
+    total,
+    monthlyAverage: total / (durationYears * 12),
+    yearlyAverage: total / durationYears,
+    annualEnergyCost,
+    annualBaseFee,
+    annualMeterFee,
+    annualOtherMonthlyFees,
+    annualOtherFees,
+    recurringTotal,
+    oneTimeFees,
+    durationYears,
+    annualKwh,
+    pricePerKwh,
+    effectivePricePerKwh: totalKwh > 0 ? total / totalKwh : null
+  };
+}
+
 function calculateLoan(principal, annualRatePercent, termMonths, ownershipMonths) {
   if (principal === 0) {
     return { payment: 0, interestPaid: 0, monthsPaid: 0, remainingBalance: 0 };
@@ -81,6 +122,83 @@ function calculateLoan(principal, annualRatePercent, termMonths, ownershipMonths
   }
 
   return { payment, interestPaid, monthsPaid, remainingBalance: balance };
+}
+
+function calculateCredit(values) {
+  const principal = parseNumber(values.principal, "Kreditsumme", { min: 0 });
+  const annualInterestRate = parseNumber(values.annualInterestRate, "Sollzins pro Jahr", { min: 0, max: 100 });
+  const termMonths = parseNumber(values.termMonths, "Laufzeit", { min: 1, max: 600, integer: true });
+  const monthlyRate = annualInterestRate / 1200;
+  const monthlyPayment = principal === 0
+    ? 0
+    : monthlyRate === 0
+      ? principal / termMonths
+      : principal * monthlyRate / (1 - Math.pow(1 + monthlyRate, -termMonths));
+
+  if (!Number.isFinite(monthlyPayment)) {
+    throw new Error("Der Kredit lässt sich mit diesen Werten nicht berechnen.");
+  }
+
+  let balance = principal;
+  let totalInterest = 0;
+  let totalPaid = 0;
+  let firstMonthInterest = 0;
+  let firstMonthPrincipal = 0;
+  let periodInterest = 0;
+  let periodPrincipal = 0;
+  let periodPaid = 0;
+  const schedule = [];
+
+  for (let month = 1; month <= termMonths; month += 1) {
+    const interest = balance * monthlyRate;
+    const actualPayment = month === termMonths
+      ? balance + interest
+      : Math.min(monthlyPayment, balance + interest);
+    const principalPaid = Math.min(balance, Math.max(0, actualPayment - interest));
+
+    if (month === 1) {
+      firstMonthInterest = interest;
+      firstMonthPrincipal = principalPaid;
+    }
+
+    balance = Math.max(0, balance - principalPaid);
+    totalInterest += interest;
+    totalPaid += actualPayment;
+    periodInterest += interest;
+    periodPrincipal += principalPaid;
+    periodPaid += actualPayment;
+
+    if (month % 12 === 0 || month === termMonths) {
+      const year = Math.ceil(month / 12);
+      schedule.push({
+        period: month % 12 === 0 ? "Jahr " + year : "Jahr " + year + " (bis Monat " + month + ")",
+        paid: periodPaid,
+        principal: periodPrincipal,
+        interest: periodInterest,
+        remainingBalance: balance
+      });
+      periodInterest = 0;
+      periodPrincipal = 0;
+      periodPaid = 0;
+    }
+  }
+
+  if (![totalInterest, totalPaid, balance, firstMonthInterest, firstMonthPrincipal].every(Number.isFinite)) {
+    throw new Error("Der Kredit lässt sich mit diesen Werten nicht sicher berechnen.");
+  }
+
+  return {
+    principal,
+    annualInterestRate,
+    termMonths,
+    monthlyPayment,
+    totalInterest,
+    totalPaid,
+    firstMonthInterest,
+    firstMonthPrincipal,
+    remainingBalance: balance,
+    schedule
+  };
 }
 
 function calculateCar(values) {
@@ -113,6 +231,7 @@ function calculateCar(values) {
   const ownershipMonths = ownershipYears * 12;
   const financedAmount = purchasePrice - downPayment;
   const loan = calculateLoan(financedAmount, annualInterestRate, loanTermMonths, ownershipMonths);
+  const completeLoan = calculateLoan(financedAmount, annualInterestRate, loanTermMonths, loanTermMonths);
   const annualEnergyCost = annualMileage / 100 * energyConsumption * energyPrice;
   const annualOperatingCost = annualInsurance + annualTax + annualMaintenance + annualEnergyCost;
   const operatingTotal = annualOperatingCost * ownershipYears;
@@ -132,6 +251,12 @@ function calculateCar(values) {
     monthlyBudgetDuringLoan: monthlyOperatingCost + loan.payment,
     downPayment,
     interestPaid: loan.interestPaid,
+    totalLoanInterest: completeLoan.interestPaid,
+    totalLoanRepayment: completeLoan.payment * completeLoan.monthsPaid,
+    loanTermMonths,
+    firstMonthPrincipal: financedAmount > 0
+      ? Math.max(0, loan.payment - financedAmount * (annualInterestRate / 1200))
+      : 0,
     operatingTotal,
     annualEnergyCost,
     monthlyEnergyCost: annualEnergyCost / 12,
@@ -152,6 +277,20 @@ function formatEuro(value) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
   }).format(value);
+}
+
+function formatMetric(metric) {
+  if (metric.value === null || metric.value === undefined) return "–";
+  if (metric.format === "number") {
+    return new Intl.NumberFormat("de-DE", { maximumFractionDigits: 0 }).format(metric.value) + (metric.unit ? " " + metric.unit : "");
+  }
+  if (metric.format === "percent") {
+    return new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 }).format(metric.value) + "%";
+  }
+  if (metric.format === "unitPrice") {
+    return new Intl.NumberFormat("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 4 }).format(metric.value) + " € / kWh";
+  }
+  return formatEuro(metric.value);
 }
 
 function createElement(tag, className, text) {
@@ -176,7 +315,7 @@ function renderResult(target, data) {
     const item = createElement("div", "metric");
     item.append(
       createElement("span", "metric-label", metric.label),
-      createElement("strong", "metric-value", formatEuro(metric.value))
+      createElement("strong", "metric-value", formatMetric(metric))
     );
     metrics.append(item);
   });
@@ -189,7 +328,38 @@ function renderResult(target, data) {
     breakdown.append(item);
   });
 
-  card.append(top, metrics, breakdown, createElement("p", "result-note", data.note));
+  card.append(top, metrics, breakdown);
+
+  if (data.schedule && data.schedule.length) {
+    const scheduleSection = createElement("section", "result-schedule");
+    scheduleSection.append(createElement("h3", "", "Tilgungsplan pro Jahr"));
+    const tableWrap = createElement("div", "result-schedule-wrap");
+    const table = document.createElement("table");
+    table.className = "result-schedule-table";
+    const head = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+    ["Zeitraum", "Gezahlt", "Davon Tilgung", "Davon Zinsen", "Restschuld"].forEach((label) => {
+      const cell = createElement("th", "", label);
+      cell.scope = "col";
+      headerRow.append(cell);
+    });
+    head.append(headerRow);
+    const body = document.createElement("tbody");
+    data.schedule.forEach((row) => {
+      const tableRow = document.createElement("tr");
+      [row.period, formatEuro(row.paid), formatEuro(row.principal), formatEuro(row.interest), formatEuro(row.remainingBalance)].forEach((value, index) => {
+        tableRow.append(createElement(index === 0 ? "th" : "td", "", value));
+      });
+      tableRow.firstElementChild.scope = "row";
+      body.append(tableRow);
+    });
+    table.append(head, body);
+    tableWrap.append(table);
+    scheduleSection.append(tableWrap);
+    card.append(scheduleSection);
+  }
+
+  card.append(createElement("p", "result-note", data.note));
   target.replaceChildren(card);
   target.hidden = false;
 }
@@ -236,28 +406,55 @@ function configureEnergyFields(type, consumptionLabel, consumptionUnit, priceLab
 function init() {
   const generalPanel = document.getElementById("generalPanel");
   const carPanel = document.getElementById("carPanel");
+  const generalForm = document.getElementById("generalForm");
+  const electricityForm = document.getElementById("electricityForm");
+  const creditForm = document.getElementById("creditForm");
   const generalTitle = document.getElementById("generalTitle");
   const generalDescription = document.getElementById("generalDescription");
 
   document.querySelectorAll(".category-button").forEach((button) => {
     button.addEventListener("click", () => {
       const isCar = button.dataset.panel === "auto";
+      const isElectricity = button.dataset.label === "Strom";
+      const isCredit = button.dataset.label === "Kredit";
       document.querySelectorAll(".category-button").forEach((item) => {
         item.setAttribute("aria-pressed", String(item === button));
       });
       generalPanel.hidden = isCar;
       carPanel.hidden = !isCar;
+      generalForm.hidden = isElectricity || isCredit;
+      electricityForm.hidden = !isElectricity;
+      creditForm.hidden = !isCredit;
 
       if (!isCar) {
-        const labels = {
-          Strom: "Stromkosten berechnen",
-          Handy: "Handykosten berechnen",
-          Internet: "Internetkosten berechnen",
-          Abos: "Abokosten berechnen",
-          Kredit: "Kreditkosten berechnen"
+        const categories = {
+          Strom: {
+            title: "Stromkosten berechnen",
+            description: "Verbrauch, Preis je Kilowattstunde und feste Gebühren übersichtlich zusammenrechnen."
+          },
+          Kredit: {
+            title: "Kreditkosten berechnen",
+            description: "Sieh Monatsrate, gesamte Zinsen und Tilgung über die vollständige Laufzeit."
+          },
+          Handy: {
+            title: "Handykosten berechnen",
+            description: "Einmalige und laufende Kosten über einen Zeitraum zusammenrechnen."
+          },
+          Internet: {
+            title: "Internetkosten berechnen",
+            description: "Einmalige und laufende Kosten über einen Zeitraum zusammenrechnen."
+          },
+          Abos: {
+            title: "Abokosten berechnen",
+            description: "Einmalige und laufende Kosten über einen Zeitraum zusammenrechnen."
+          }
         };
-        generalTitle.textContent = labels[button.dataset.label] || "Allgemeiner Kostenrechner";
-        generalDescription.textContent = "Einmalige und laufende Kosten über einen Zeitraum zusammenrechnen.";
+        const category = categories[button.dataset.label] || {
+          title: "Allgemeiner Kostenrechner",
+          description: "Einmalige und laufende Kosten über einen Zeitraum zusammenrechnen."
+        };
+        generalTitle.textContent = category.title;
+        generalDescription.textContent = category.description;
       }
 
       const panel = isCar ? carPanel : generalPanel;
@@ -266,7 +463,7 @@ function init() {
   });
 
   showCalculation(
-    document.getElementById("generalForm"),
+    generalForm,
     document.getElementById("generalResult"),
     document.getElementById("generalError"),
     calculateGeneral,
@@ -291,6 +488,60 @@ function init() {
   );
 
   showCalculation(
+    electricityForm,
+    document.getElementById("electricityResult"),
+    document.getElementById("electricityError"),
+    calculateElectricity,
+    (answer) => ({
+      kicker: "Stromkosten im Zeitraum",
+      subtitle: "Für " + answer.durationYears + (answer.durationYears === 1 ? " Jahr" : " Jahre"),
+      total: answer.total,
+      metrics: [
+        { label: "Durchschnitt pro Monat", value: answer.monthlyAverage },
+        { label: "Kosten pro Jahr", value: answer.yearlyAverage },
+        { label: "Verbrauchskosten pro Jahr", value: answer.annualEnergyCost },
+        { label: "Effektiver Preis inklusive Gebühren", value: answer.effectivePricePerKwh, format: "unitPrice" }
+      ],
+      breakdown: [
+        { label: "Verbrauchskosten im Zeitraum", value: answer.annualEnergyCost * answer.durationYears },
+        { label: "Grundpreis im Zeitraum", value: answer.annualBaseFee * answer.durationYears },
+        { label: "Zähler- und Messstellengebühr im Zeitraum", value: answer.annualMeterFee * answer.durationYears },
+        { label: "Weitere feste Monatsgebühren", value: answer.annualOtherMonthlyFees * answer.durationYears },
+        { label: "Weitere Jahresgebühren", value: answer.annualOtherFees * answer.durationYears },
+        { label: "Einmalige Gebühren", value: answer.oneTimeFees }
+      ],
+      note: "Beispielwerte bitte mit deinem Tarif und der letzten Jahresabrechnung abgleichen. Der effektive Preis je kWh verteilt auch feste Gebühren auf deinen Verbrauch."
+    })
+  );
+
+  showCalculation(
+    creditForm,
+    document.getElementById("creditResult"),
+    document.getElementById("creditError"),
+    calculateCredit,
+    (answer) => ({
+      kicker: "Gesamt zurückzuzahlen",
+      subtitle: answer.termMonths + " Monate bei " + new Intl.NumberFormat("de-DE", { maximumFractionDigits: 2 }).format(answer.annualInterestRate) + "% Sollzins pro Jahr",
+      total: answer.totalPaid,
+      metrics: [
+        { label: "Monatliche Rate", value: answer.monthlyPayment },
+        { label: "Zinsen insgesamt", value: answer.totalInterest },
+        { label: "Laufzeit", value: answer.termMonths, format: "number", unit: "Monate" },
+        { label: "Tilgung in der ersten Rate", value: answer.firstMonthPrincipal }
+      ],
+      breakdown: [
+        { label: "Kreditsumme", value: answer.principal },
+        { label: "Zinsen insgesamt", value: answer.totalInterest },
+        { label: "Davon im ersten Monat Zinsen", value: answer.firstMonthInterest },
+        { label: "Davon im ersten Monat Tilgung", value: answer.firstMonthPrincipal },
+        { label: "Getilgter Kreditbetrag über die Laufzeit", value: answer.principal }
+      ],
+      schedule: answer.schedule,
+      note: "Vereinfachte Annuitätenrechnung mit gleichbleibender Monatsrate. Zusätzliche Bankgebühren, abweichende Rundungen und Sondertilgungen sind nicht enthalten."
+    })
+  );
+
+  showCalculation(
     document.getElementById("carForm"),
     document.getElementById("carResult"),
     document.getElementById("carError"),
@@ -303,17 +554,22 @@ function init() {
         { label: "Kosten im Schnitt pro Monat", value: answer.monthlyAverage },
         { label: "Kreditrate pro Monat", value: answer.monthlyPayment },
         { label: "Laufende Kosten pro Monat", value: answer.monthlyOperatingCost },
+        { label: "Kreditsumme", value: answer.financedAmount },
+        { label: "Kreditlaufzeit", value: answer.loanTermMonths, format: "number", unit: "Monate" },
+        { label: "Zinsen bei kompletter Kreditlaufzeit", value: answer.totalLoanInterest },
+        { label: "Tilgung in der ersten Monatsrate", value: answer.firstMonthPrincipal },
         { label: "Anzahlung zu Beginn", value: answer.downPayment }
       ],
       breakdown: [
         { label: "Wertverlust (Kaufpreis abzüglich Verkaufspreis)", value: answer.depreciation },
         { label: "Finanzierungszinsen während der Besitzzeit", value: answer.interestPaid },
+        { label: "Gesamtrückzahlung über die Kreditlaufzeit", value: answer.totalLoanRepayment },
         { label: "Laufende Kosten über die Besitzzeit", value: answer.operatingTotal },
         { label: "davon Kraftstoff oder Strom pro Monat", value: answer.monthlyEnergyCost },
         { label: "Geldbedarf pro Monat während des Kredits", value: answer.monthlyBudgetDuringLoan },
         { label: "Geschätzte Restschuld am Ende der Besitzzeit", value: answer.remainingBalance }
       ],
-      note: "Die Gesamtkosten bestehen aus Wertverlust, Finanzierungszinsen und laufenden Kosten. Anzahlung und Tilgung werden nicht zusätzlich gezählt, damit der Kaufpreis nicht doppelt eingeht. Die Restschuld ist ein Schätzwert bei Verkauf am Ende der Besitzzeit."
+      note: "Die Autogesamtkosten zählen Wertverlust, Zinsen bis zum Ende der Besitzzeit und laufende Kosten. Zusätzlich siehst du die Zinsen und Rückzahlung über die komplette Kreditlaufzeit. Anzahlung und Tilgung werden nicht doppelt als Kosten gezählt."
     })
   );
 
@@ -348,5 +604,5 @@ if (typeof document !== "undefined") {
 }
 
 if (typeof module !== "undefined" && module.exports) {
-  module.exports = { calculateGeneral, calculateCar };
+  module.exports = { calculateGeneral, calculateElectricity, calculateCredit, calculateCar };
 }
